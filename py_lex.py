@@ -8,9 +8,12 @@ from ply import lex
 reserved_words = {
     'print': 'PRINT',
     'if': 'IF',
+    'elif': 'ELIF',
+    'else': 'ELSE',
     'for': 'FOR',
     'while': 'WHILE',
     'len': 'LEN',
+    'break': 'BREAK'
 }
 tokens = ['NUMBER', 'PLUS', 'MINUS', 'TIMES', 'DIVIDE', 'LPAREN', 'RPAREN', 'LLIST', 'RLIST', 'ASSIGN',
           'LBRACE', 'RBRACE', 'SEMICOLON', 'COMMA', 'DPLUS', 'DMINUS', 'ID', 'EDIVIDE',

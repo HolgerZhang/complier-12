@@ -16,6 +16,8 @@ array : LLIST exprs RLIST | LLIST RLIST
 selfvar : leftval DPLUS | leftval DMINUS
 condition : expr LT expr | expr LE expr | expr GT expr | expr GE expr | expr EQ expr | expr NE expr | expr
 if : IF LPAREN condition RPAREN LBRACE statements RBRACE
+   | IF LPAREN condition RPAREN LBRACE statements RBRACE ELSE LBRACE statements RBRACE
+   | IF LPAREN condition RPAREN LBRACE statements RBRACE ELIF LPAREN condition RPAREN LBRACE statements RBRACE ELSE LBRACE statements RBRACE
 while : WHILE LPAREN condition RPAREN LBRACE statements RBRACE
 for : FOR LPAREN assignment SEMICOLON condition SEMICOLON selfvar RPAREN LBRACE statements RBRACE
 """
@@ -213,7 +215,9 @@ def p_condition(t):
 
 
 def p_if(t):
-    """if : IF LPAREN condition RPAREN LBRACE statements RBRACE"""
+    """if : IF LPAREN condition RPAREN LBRACE statements RBRACE
+          | IF LPAREN condition RPAREN LBRACE statements RBRACE ELSE LBRACE statements RBRACE
+          | IF LPAREN condition RPAREN LBRACE statements RBRACE ELIF LPAREN condition RPAREN LBRACE statements RBRACE ELSE LBRACE statements RBRACE"""
     if len(t) == 8:
         t[0] = NonTerminal('If')
         t[0].add(Terminal(t[1]))

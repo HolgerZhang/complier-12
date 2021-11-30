@@ -2,7 +2,7 @@
 语法：
 program : statements
 statements : statements statement | statement
-statement : assignment | expr | print | if | while | for
+statement : assignment | expr | print | if | while | for | break
 assignment : leftval ASSIGN expr | leftval ASSIGN array
 leftval : leftval LLIST expr RLIST | ID  # 左值，可以被赋值、读取值的符号
 # 右值，只能读取值的符号
@@ -20,6 +20,7 @@ if : IF LPAREN condition RPAREN LBRACE statements RBRACE
    | IF LPAREN condition RPAREN LBRACE statements RBRACE ELIF LPAREN condition RPAREN LBRACE statements RBRACE ELSE LBRACE statements RBRACE
 while : WHILE LPAREN condition RPAREN LBRACE statements RBRACE
 for : FOR LPAREN assignment SEMICOLON condition SEMICOLON selfvar RPAREN LBRACE statements RBRACE
+break : BREAK
 """
 
 # coding=utf-8
@@ -57,7 +58,8 @@ def p_statement(t):
                   | print
                   | if
                   | while
-                  | for"""
+                  | for
+                  | break"""
     if len(t) == 2:
         t[0] = NonTerminal('Statement')
         t[0].add(t[1])
@@ -220,14 +222,46 @@ def p_if(t):
           | IF LPAREN condition RPAREN LBRACE statements RBRACE ELIF LPAREN condition RPAREN LBRACE statements RBRACE ELSE LBRACE statements RBRACE"""
     if len(t) == 8:
         t[0] = NonTerminal('If')
-        t[0].add(Terminal(t[1]))
-        t[0].add(Terminal(t[2]))
-        t[0].add(t[3])
-        t[0].add(Terminal(t[4]))
-        t[0].add(Terminal(t[5]))
-        t[0].add(t[6])
-        t[0].add(Terminal(t[7]))
-
+        t[0].add(Terminal(t[1]))  # if
+        t[0].add(Terminal(t[2]))  # (
+        t[0].add(t[3])  # condition
+        t[0].add(Terminal(t[4]))  # )
+        t[0].add(Terminal(t[5]))  # {
+        t[0].add(t[6])  # statements
+        t[0].add(Terminal(t[7]))  # }
+    elif len(t) == 12:
+        t[0] = NonTerminal('If')
+        t[0].add(Terminal(t[1]))  # if
+        t[0].add(Terminal(t[2]))  # (
+        t[0].add(t[3])  # condition
+        t[0].add(Terminal(t[4]))  # )
+        t[0].add(Terminal(t[5]))  # {
+        t[0].add(t[6])  # statements
+        t[0].add(Terminal(t[7]))  # }
+        t[0].add(Terminal(t[8]))  # else
+        t[0].add(Terminal(t[9]))  # {
+        t[0].add(t[10])  # statements
+        t[0].add(Terminal(t[11]))  # }
+    elif len(t) == 19:
+        t[0] = NonTerminal('If')
+        t[0].add(Terminal(t[1]))  # if
+        t[0].add(Terminal(t[2]))  # (
+        t[0].add(t[3])  # condition
+        t[0].add(Terminal(t[4]))  # )
+        t[0].add(Terminal(t[5]))  # {
+        t[0].add(t[6])  # statements
+        t[0].add(Terminal(t[7]))  # }
+        t[0].add(Terminal(t[8]))  # elif
+        t[0].add(Terminal(t[9]))  # (
+        t[0].add(t[10])  # condition
+        t[0].add(Terminal(t[11]))  # )
+        t[0].add(Terminal(t[12]))  # {
+        t[0].add(t[13])  # statements
+        t[0].add(Terminal(t[14]))  # }
+        t[0].add(Terminal(t[15]))  # else
+        t[0].add(Terminal(t[16]))  # {
+        t[0].add(t[17])  # statements
+        t[0].add(Terminal(t[18]))  # }
 
 def p_while(t):
     """while : WHILE LPAREN condition RPAREN LBRACE statements RBRACE"""
@@ -257,6 +291,13 @@ def p_for(t):
         t[0].add(Terminal(t[9]))
         t[0].add(t[10])
         t[0].add(Terminal(t[11]))
+
+
+def p_break(t):
+    """break : BREAK"""
+    if len(t) == 2:
+        t[0] = NonTerminal('Break')
+        t[0].add(Terminal(t[1]))
 
 
 def p_error(t):

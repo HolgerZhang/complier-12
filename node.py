@@ -93,7 +93,7 @@ class ID(_node):
     def __str__(self):
         id_ = self._data
         val = self._value
-        return f"{id_}(value={val})"
+        return f"{id_}"
 
 
 class Terminal(_node):
@@ -106,5 +106,5 @@ class Terminal(_node):
 
     def __str__(self):
         s = str(self._data).replace('[', '【').replace(']', '】')
-        # return f'{s}'
-        return ''
+        return f'{s}'
+        # return ''

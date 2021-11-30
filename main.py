@@ -26,3 +26,4 @@ except Exception as e:
     sys.stdout.flush()
     sleep(0.05)
     print(*e.args, file=sys.stderr)
+    raise e

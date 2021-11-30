@@ -48,6 +48,23 @@ class NonTerminal(_node):
             return f"[{self.type}{children}]"
 
 
+class LeftValue(NonTerminal):
+    """
+    左值节点，提供type表示非终结符的类型，id表示引用的变量，value（可选）为值
+    """
+    def __init__(self, data):
+        super(LeftValue, self).__init__(data)
+        self._id = None
+
+    @property
+    def id(self):
+        return self._id
+
+    @id.setter
+    def id(self, i):
+        self._id = i
+
+
 class Number(_node):
     """
     数字节点，value为值
@@ -55,10 +72,10 @@ class Number(_node):
     def __init__(self, data):
         super(Number, self).__init__(data)
         self._data = 'number'
-        self._value = float(data)
+        self._value = int(data)
 
     def __str__(self):
-        return f'[{self._value}]'
+        return f'{self._value}'
 
 
 class ID(_node):
@@ -71,12 +88,12 @@ class ID(_node):
 
     def __init__(self, data):
         super(ID, self).__init__(data)
-        self._value = 0.0
+        self._value = 0
 
     def __str__(self):
         id_ = self._data
         val = self._value
-        return f"[{id_}(value={val})]"
+        return f"{id_}(value={val})"
 
 
 class Terminal(_node):
@@ -88,4 +105,6 @@ class Terminal(_node):
         return self._data
 
     def __str__(self):
-        return f'[{self._data}]'
+        s = str(self._data).replace('[', '【').replace(']', '】')
+        # return f'{s}'
+        return ''

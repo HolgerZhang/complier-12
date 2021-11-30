@@ -5,16 +5,41 @@ from ply import lex
 
 # LEX for parsing Python
 
-# Tokens
-tokens = ('ID', 'NUMBER', 'PRINT')
-
-literals = ['=', '+', '-', '*', '/', '(', ')', '{', '}', '<', '>', ',']
 reserved_words = {
     'print': 'PRINT',
+    'if': 'IF',
+    'for': 'FOR',
+    'while': 'WHILE',
+    'len': 'LEN',
 }
-
+tokens = ['NUMBER', 'PLUS', 'MINUS', 'TIMES', 'DIVIDE', 'LPAREN', 'RPAREN', 'LLIST', 'RLIST', 'ASSIGN',
+          'LBRACE', 'RBRACE', 'SEMICOLON', 'COMMA', 'DPLUS', 'DMINUS', 'ID', 'EDIVIDE',
+          'LT', 'LE', 'GT', 'GE', 'EQ', 'NE', ] + list(reserved_words.values())
 
 # Define of tokens
+t_PLUS = r'\+'
+t_MINUS = r'-'
+t_TIMES = r'\*'
+t_DIVIDE = r'/'
+t_EDIVIDE = r'//'
+t_LPAREN = r'\('
+t_RPAREN = r'\)'
+t_LBRACE = r'\{'
+t_RBRACE = r'\}'
+t_LLIST = R'\['
+t_RLIST = R'\]'
+t_ASSIGN = r'='
+t_DPLUS = r'\+\+'
+t_DMINUS = r'--'
+t_COMMA = r','
+t_SEMICOLON = r';'
+t_LT = r'<'
+t_LE = r'<='
+t_GT = r'>'
+t_GE = r'>='
+t_EQ = r'=='
+t_NE = r'!='
+
 
 # 识别 ID，首先检查是否为保留字print，若是则申明其类型，否则为 ID
 def t_ID(t):

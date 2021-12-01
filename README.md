@@ -1,4 +1,4 @@
-<h3 align="center">编译原理实践第10-11次课<br/>基于PLY的Python解析-1</h3>
+<h3 align="center">编译原理实践第12次课<br/>基于PLY的Python解析-2</h3>
 <p align="center">张昊 &nbsp;&nbsp; 1927405160</p>
 
 ### 概述
@@ -23,6 +23,8 @@
 ID -> [A-Za-z_][A-Za-z0-9_]*
 NUMBER -> \d+
 ```
+
+【注】这里NUMBER只能识别非负整数，对于负号的实现应该在语法分析中定义产生式来实现。（这里是上一个实验报告遗留的一个bug）但是样例中没有负数出现。因此，这一版本的代码暂不支持纯负数的解析（可以通过0-num来间接实现）。
 
 > 识别 ID，首先检查是否为保留字，若是则申明其类型，否则为 ID
 
@@ -51,15 +53,30 @@ for : FOR LPAREN assignment SEMICOLON condition SEMICOLON selfvar RPAREN LBRACE 
 break : BREAK
 ```
 
-其中，expr、term、factor 定义了四则运算的语法；exprs、print 实现了支持不定长参数的 print 函数。另外定义了一系列节点，与语法分析过程中相对应：
+其中：
+
+- expr、term、factor 定义了四则运算的语法。
+- exprs、print 实现了支持不定长参数的 print 函数。
+- leftval 定义了ID和数组下标访问语法，使用了C++中左值的概念，为可读可写的引用，对其的读写需要同过符号表。 
+- len 定义了 Python 函数 len() 的语法，规定传入的只能是左值。
+- array 利用 exprs 实现了 Python 的列表定义。
+- selfvar 实现了对一个变量的右自增和自减。
+  这里考虑到解析的代码中只是对变量进行自增，故未实现左自增（对称实现即可），也没有定义selfvar的返回值。
+- condition 实现了判断中的条件。
+- if、for、while 实现了分支和循环语句。
+  【注】if多路分支只实现了 if-elif-else 的语法。 
+
+另外定义了一系列节点，与语法分析过程中相对应：
 
 ```python
 class _node:
-    """ 所有节点的基类 """
+    """
+    所有节点的基类
+    """
     def __init__(self, data):
         self._data = data
         self._children = []
-        self._value = None
+        self._value = NIL
     @property
     def value(self):
         return self._value
@@ -75,51 +92,120 @@ class _node:
     def add(self, node):
         self._children.append(node)
 class NonTerminal(_node):
-    """ 非终结符节点，提供type表示非终结符的类型，value（可选）为值 """
+    """
+    非终结符节点，提供type表示非终结符的类型，value（可选）为值
+    """
     @property
     def type(self):
         return self._data
     def __str__(self):
-        if len(self.children) == 0: children = ''
-        else: children = ' ' + ' '.join(map(str, self.children))
-        if self._value is not None:
-            val = str(self._value).replace(' ', '').replace('[', '<').replace(']', '>')
-            return f"[{self.type}(value={val}){children}]"
-        else: return f"[{self.type}{children}]"
+        if len(self.children) == 0:
+            children = ''
+        else:
+            children = ' ' + ' '.join(map(str, self.children))
+        r = f"[{self.type}{children}]"
+        return re.sub(r'\s+', ' ', r)
+class LeftValue(NonTerminal):
+    """
+    左值节点，提供type表示非终结符的类型，id表示引用的变量
+    """
+    def __init__(self, data):
+        super(LeftValue, self).__init__(data)
+        self._id = None
+        del self._value
+    def __str__(self):
+        if len(self.children) == 0:
+            children = ''
+        else:
+            children = ' ' + ' '.join(map(str, self.children))
+        r = f"[{self.type}{children}]"
+        return re.sub(r'\s+', ' ', r)
+    @property
+    def id(self): return self._id
+    @property
+    def value(self):
+        raise ValueError('LeftValue 的 value 属性不被允许使用，请通过检索符号表实现')
+    @id.setter
+    def id(self, i): self._id = i
 class Number(_node):
-    """ 数字节点，value为值 """
+    """
+    数字节点，value为值
+    """
     def __init__(self, data):
         super(Number, self).__init__(data)
         self._data = 'number'
-        self._value = float(data)
+        self._value = int(data)
     def __str__(self):
-        return f'[{self._value}]'
+        return f'Number({self._value})'
 class ID(_node):
-    """ 标识符节点，提供id表示标识符名称，value为值 """
+    """
+    标识符节点，提供id表示标识符名称，value为值
+    """
     @property
     def id(self):
         return self._data
     def __init__(self, data):
         super(ID, self).__init__(data)
-        self._value = 0.0
+        self._value = NIL
     def __str__(self):
         id_ = self._data
-        val = self._value
-        return f"[{id_}(value={val})]"
+        return f"ID('{id_}')"
 class Terminal(_node):
-    """ 除标识符以外的终结符节点，提供text表示其内容 """
+    """
+    除标识符以外的终结符节点，提供text表示其内容
+    """
     @property
     def text(self):
         return self._data
     def __str__(self):
-        return f'[{self._data}]'
+        s = str(self._data).replace('<=', '≤').replace('>=', '≥').replace('<', '＜').replace('>', '＞')
+        if s in ('{', '}', '(', ')', '[', ']', 'while', 'for', ',', ';', '='):
+            # 省略不必要的终结符，缩减树的规模
+            return ''
+        return f'[{s}]'
 ```
 
 通过各节点的 `__str__` 可以将其转换为语法树的字符串表示。
 
 #### 语法制导翻译
 
-如上一小节的代码所示，每个节点都有一个 value 属性，用来保存节点的值（如没有值则为None）。另外设计了一个变量表，用以保存每个变量的值。具体地，当使用赋值语句为一个变量赋值时，会在变量表中添加名为该变量名的记录；当访问一个变量的值时，会到变量表中查找该变量的值，如不存在则报错。定义了如下的动作（其中 `<...>` 为列表）：
+如上一小节的代码所示，每个节点都有一个 value 属性（左值LeftVal的value属性被禁用，而是应该通过符号表来检索值），
+用来保存节点的值。
+（如没有值则为None，数值类型则会赋给一个自定义的单例NIL，表示未赋值的变量，且与None的区分）
+另外设计了一个符号表，用以保存每个变量的值。
+具体地，当使用赋值语句为一个变量赋值时，会在符号表中添加名为该变量名的记录；
+当访问一个变量的值时，会到表中查找该变量的值，如不存在则报错。
+
+关于符号表的检索，定义如下检索和插入的函数：
+```python
+def get_value(tb, vid):
+    name, sub = vid
+    if not isinstance(name, tuple):
+        if sub is None:
+            return tb[name]
+        return tb.get[name][sub]
+    if sub is None:
+        return get_value(tb, name)
+    return get_value(tb, name)[sub]
+def set_value(tb, vid, val):
+    name, sub = vid
+    if not isinstance(name, tuple):
+        if sub is None:
+            tb[name] = val
+            return
+        tb[name][sub] = val
+        return
+    if sub is None:
+        set_value(tb, name, val)
+        return
+    get_value(tb, name)[sub] = val
+```
+
+其中，vid为形如 `((..., subscript), None)` 的二元组，
+其中...为二元组，subscript为下标访问时的下标（最外层为None）。
+从而可以实现下标访问的嵌套。
+
+对于除if、for、while、break所对应的非终结符相应的产生式，定义了如下的动作：
 
 ```
 assignment -> leftval ASSIGN expr | leftval ASSIGN array { value = expr.value; set_value(var_table, leftval.id, value); }
@@ -161,7 +247,16 @@ condition -> expr '!=' expr1  { condition.value = exp.value != expr1.value; }
 condition -> expr  { condition.value = bool(exp.value); }
 ```
 
-采用深度优先的顺序遍历整个语法树，具体实现详见代码。
+对于if、for、while，提前翻译条件condition，根据结果来判断分支是否执行或循环是否继续。
+
+对于循环，定义变量loop_flag用来标识循环的层数，大于0为循环层数，等于0为不在循环内，小于0非法。
+
+对于break，定义变量break_flag来指示是否遇到了break，
+如果遇到了，则后续节点都不翻译，并跳出循环。
+
+以上代码实现详见 translate.py 。
+
+其余部分，采用深度优先的顺序遍历整个语法树，具体实现详见代码。
 
 ### 运行
 
@@ -223,7 +318,7 @@ print(mid)
 当前变量表： {'a': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 'key': 3, 'n': 10, 'begin': 2, 'end': 3, 'mid': 2}
 ~~~
 
-> 如果图片不清晰，请点击如下链接：[http://repo.holgerbest.top/html/ply_python.html](http://repo.holgerbest.top/html/ply_python.html)
+> 如果图片不清晰，请点击如下链接：[http://repo.holgerbest.top/html/ply_python-2.html](http://repo.holgerbest.top/html/ply_python-2.html)
 
 语法树：
 

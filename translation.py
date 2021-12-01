@@ -1,10 +1,20 @@
 # coding=utf-8
 """
-assignment -> leftval ASSIGN expr  { leftval.value = expr.value; set_value(var_table, leftval.id, expr.value); }
-assignment -> leftval ASSIGN array  { leftval.value = array.value; set_value(var_table, leftval.id, array.value); }
+翻译动作：
+提前遍历翻译：
+if -> IF LPAREN condition RPAREN LBRACE statements RBRACE
+   | IF LPAREN condition RPAREN LBRACE statements RBRACE ELSE LBRACE statements RBRACE
+   | IF LPAREN condition RPAREN LBRACE statements RBRACE ELIF LPAREN condition RPAREN LBRACE statements RBRACE ELSE LBRACE statements RBRACE
+while -> WHILE LPAREN condition RPAREN LBRACE statements RBRACE
+for -> FOR LPAREN assignment SEMICOLON condition SEMICOLON selfvar RPAREN LBRACE statements RBRACE
+break -> BREAK
+遍历时翻译：
+assignment -> leftval ASSIGN expr | leftval ASSIGN array { value = expr.value; set_value(var_table, leftval.id, value); }
 leftval -> leftval1 LLIST expr RLIST  { leftval.id = (leftval1.id, expr.value);
                                         leftval.value = get_value(var_table, leftval.id); }
-leftval -> ID  { leftval.id = (ID.id, None); leftval.value = ID.value; }
+leftval -> ID  { leftval.id = (ID.id, None);
+                 if (ID.value != NIL) { set_value(var_table, leftval.id, ID.value); } }
+leftval -> leftval1 LLIST expr RLIST  { leftval.id = (leftval1.id, expr.value); }
 expr -> expr1 '+' term  { expr.value = expr1.value + term.value; }
 expr -> expr1 '-' term  { expr.value = expr1.value - term.value; }
 expr -> term  { expr.value = term.value; }
@@ -12,19 +22,23 @@ term -> term1 '*' factor  { term.value = term1.value * factor.value; }
 term -> term1 '/' factor  { term.value = term1.value / factor.value; }
 term -> term1 '//' factor  { term.value = term1.value // factor.value; }
 term -> factor { term.value = factor.value; }
-factor -> leftval { leftval.value = get_value(var_table, leftval.id); factor.value = leftval.value; }
+factor -> leftval  { value = get_value(var_table, leftval.id); factor.value = value; }
 factor -> NUMBER  { factor.value = NUMBER.value; }
 factor -> len  { factor.value = len.value; }
 factor -> '(' expr ')'  { fact.value = expr.value; }
-len -> LEN '(' expr ')'  { len.value = len(expr.value) }
-exprs -> exprs1 ',' expr  { exprs.value = exprs1.value + <expr.value>; }
-exprs -> expr  { exprs.value = <expr.value>; }
+exprs -> exprs1 ',' expr  { exprs.value = exprs1.value + [expr.value]; }
+exprs -> expr  { exprs.value = [expr.value]; }
 print -> PRINT '(' exprs ')'  { print(*exprs.value); }
 print -> PRINT '(' ')'  { print(); }
+len -> LEN '(' leftval ')'  { len.value = len(get_value(var_table, leftval.id)) }
 array -> '[' exprs ']'  { array.value = exprs.value; }
-array -> '[' ']' { array.value = <>; }
-selfvar -> leftval '++'  { leftval.value = leftval.value + 1; set_value(var_table, leftval.id, leftval.value); }
-selfvar -> leftval '--'  { leftval.value = leftval.value - 1; set_value(var_table, leftval.id, leftval.value); }
+array -> '[' ']' { array.value = []; }
+selfvar -> leftval '++'  { value = get_value(var_table, tree.child(0).id);
+                           value = value + 1;
+                           set_value(var_table, leftval.id, value); }
+selfvar -> leftval '--'  { value = get_value(var_table, tree.child(0).id);
+                           value = value - 1;
+                           set_value(var_table, leftval.id, value); }
 condition -> expr '<' expr1  { condition.value = exp.value < expr1.value; }
 condition -> expr '<=' expr1  { condition.value = exp.value <= expr1.value; }
 condition -> expr '>' expr1  { condition.value = exp.value > expr1.value; }
@@ -35,13 +49,15 @@ condition -> expr  { condition.value = bool(exp.value); }
 """
 from node import *
 
+__DEBUG_MODE = False  # 调试时输出部分运行信息
+
 
 def get_value(tb, vid):
     name, sub = vid
     if not isinstance(name, tuple):
         if sub is None:
             return tb[name]
-        return tb[name][sub]
+        return tb.get[name][sub]
     if sub is None:
         return get_value(tb, name)
     return get_value(tb, name)[sub]
@@ -62,7 +78,7 @@ def set_value(tb, vid, val):
 
 
 var_table = {}  # variable table
-loop_flag = False  # 循环内指示器
+loop_flag = 0  # 循环内指示器，大于0为循环层数，等于0为不在循环内，小于0非法
 break_flag = False  # break指示器
 
 
@@ -83,18 +99,23 @@ def translate(tree):
                    isinstance(tree.child(4), Terminal) and tree.child(4).text == '{' and \
                    isinstance(tree.child(5), NonTerminal) and tree.child(5).type == 'Statements' and \
                    isinstance(tree.child(6), Terminal) and tree.child(6).text == '}', 'Syntax error'
+            if __DEBUG_MODE: print('if (...)')
             translate(tree.child(2))  # Condition
             condition = tree.child(2).value
             if condition:
+                if __DEBUG_MODE: print('then {...}  # if-then')
                 translate(tree.child(5))  # Statements
             if len(tree.children) == 11:
+                """ELSE LBRACE statements2 RBRACE"""
                 assert isinstance(tree.child(7), Terminal) and tree.child(7).text == 'else' and \
                        isinstance(tree.child(8), Terminal) and tree.child(8).text == '{' and \
                        isinstance(tree.child(9), NonTerminal) and tree.child(9).type == 'Statements' and \
                        isinstance(tree.child(10), Terminal) and tree.child(10).text == '}', 'Syntax error'
-                if not condition:
+                if not condition:  # 只有if没有成立才执行
+                    if __DEBUG_MODE: print('else {...}  # else-else')
                     translate(tree.child(9))  # Statements2
             elif len(tree.children) == 18:
+                """ELIF LPAREN condition2 RPAREN LBRACE statements2 RBRACE ELSE LBRACE statements3 RBRACE"""
                 assert isinstance(tree.child(7), Terminal) and tree.child(7).text == 'elif' and \
                        isinstance(tree.child(8), Terminal) and tree.child(8).text == '(' and \
                        isinstance(tree.child(9), NonTerminal) and tree.child(9).type == 'Condition' and \
@@ -106,12 +127,16 @@ def translate(tree):
                        isinstance(tree.child(15), Terminal) and tree.child(15).text == '{' and \
                        isinstance(tree.child(16), NonTerminal) and tree.child(16).type == 'Statements' and \
                        isinstance(tree.child(17), Terminal) and tree.child(17).text == '}', 'Syntax error'
-                translate(tree.child(9))  # Condition
-                elif_condition = tree.child(9).value
-                if (not condition) and elif_condition:
-                    translate(tree.child(12))  # Statements2
-                else:
-                    translate(tree.child(16))  # Statements3
+                if not condition:  # 只有if没有成立才执行
+                    if __DEBUG_MODE: print('elif (...)')
+                    translate(tree.child(9))  # Condition2
+                    elif_condition = tree.child(9).value
+                    if elif_condition:
+                        if __DEBUG_MODE: print('then {...}  # elif-then')
+                        translate(tree.child(12))  # Statements2
+                    else:  # 只有if没有成立才执行
+                        if __DEBUG_MODE: print('else {...}  # elif-else')
+                        translate(tree.child(16))  # Statements3
             return
         # While
         elif tree.type == 'While':
@@ -124,17 +149,22 @@ def translate(tree):
                    isinstance(tree.child(4), Terminal) and tree.child(4).text == '{' and \
                    isinstance(tree.child(5), NonTerminal) and tree.child(5).type == 'Statements' and \
                    isinstance(tree.child(6), Terminal) and tree.child(6).text == '}', 'Syntax error'
+            if __DEBUG_MODE: print('while (...)')
+            _loop_count = 0
+            loop_flag += 1  # 进入一层循环
             while True:
                 translate(tree.child(2))  # Condition
                 condition = tree.child(2).value
                 if not condition:
-                    loop_flag = False
+                    if __DEBUG_MODE: print('# end-while')
+                    loop_flag -= 1  # 跳出一层循环
                     break
-                loop_flag = True
+                if __DEBUG_MODE:
+                    print('do {...}  # while, count =', (_loop_count := _loop_count + 1), 'indent =', loop_flag)
                 translate(tree.child(5))  # Statements
                 if break_flag:
-                    break_flag = False
-                    loop_flag = False
+                    break_flag = False  # 执行break
+                    loop_flag -= 1  # 跳出一层循环
                     break
             return
         # For
@@ -152,18 +182,23 @@ def translate(tree):
                    isinstance(tree.child(8), Terminal) and tree.child(8).text == '{' and \
                    isinstance(tree.child(9), NonTerminal) and tree.child(9).type == 'Statements' and \
                    isinstance(tree.child(10), Terminal) and tree.child(10).text == '}', 'Syntax error'
+            if __DEBUG_MODE: print('for (...;...;...)')
+            _loop_count = 0
             translate(tree.child(2))  # Assignment
+            loop_flag += 1  # 进入一层循环
             while True:
                 translate(tree.child(4))  # Condition
                 condition = tree.child(4).value
                 if not condition:
-                    loop_flag = False
+                    if __DEBUG_MODE: print('# end-for')
+                    loop_flag -= 1  # 跳出一层循环
                     break
-                loop_flag = True
+                if __DEBUG_MODE:
+                    print('do {...}  # for, count =', (_loop_count := _loop_count + 1), 'indent =', loop_flag)
                 translate(tree.child(9))  # Statements
                 if break_flag:
-                    break_flag = False
-                    loop_flag = False
+                    break_flag = False  # 执行break
+                    loop_flag -= 1  # 跳出一层循环
                     break
                 translate(tree.child(6))  # SelfVar
             return
@@ -171,8 +206,9 @@ def translate(tree):
         elif tree.type == 'Break':
             assert len(tree.children) == 1 and \
                    isinstance(tree.child(0), Terminal) and tree.child(0).text == 'break', 'Syntax error'
-            assert loop_flag, 'Syntax error: use "break" in non-loop statements'
-            break_flag = True
+            assert loop_flag > 0, 'Syntax error: use "break" in non-loop statements'
+            break_flag = True  # 转为break状态
+            if __DEBUG_MODE: print('BREAK!')
             return
 
     # 深度优先遍历语法树
@@ -189,25 +225,24 @@ def translate(tree):
                    isinstance(tree.child(1), Terminal) and tree.child(1).text == '=' and \
                    isinstance(tree.child(2), NonTerminal) and tree.child(2).type in ('Expr', 'Array'), 'Syntax error'
             value = tree.child(2).value
-            tree.child(0).value = value
             set_value(var_table, tree.child(0).id, value)  # update var_table
+            if __DEBUG_MODE: print('assignment', tree.child(0).id, value)
         # LeftVal
         elif tree.type == 'LeftVal':
             """leftval -> leftval1 LLIST expr RLIST | ID"""
             assert len(tree.children) == 1 or len(tree.children) == 4, 'Syntax error'
             if len(tree.children) == 1:
                 assert isinstance(tree.child(0), ID), 'Syntax error'
-                # { leftval.id = (ID.id, None); leftval.value = ID.value; }
                 tree.id = (tree.child(0).id, None)
-                tree.value = tree.child(0).value
+                if tree.child(0).value is not NIL:
+                    set_value(var_table, tree.id, tree.child(0).value)
+                    if __DEBUG_MODE: print('assignment', tree.id, tree.child(0).value)
             elif len(tree.children) == 4:
                 assert isinstance(tree.child(0), LeftValue) and \
                        isinstance(tree.child(1), Terminal) and tree.child(1).text == '[' and \
                        isinstance(tree.child(2), NonTerminal) and tree.child(2).type == 'Expr' and \
                        isinstance(tree.child(3), Terminal) and tree.child(3).text == ']', 'Syntax error'
-                # { leftval.id = (leftval1.id, expr.value); leftval.value = get_value(var_table, leftval.id); }
                 tree.id = (tree.child(0).id, tree.child(2).value)
-                tree.value = get_value(var_table, tree.id)
         # Expr
         elif tree.type == 'Expr':
             '''expr : expr '+' term | expr '-' term | term'''
@@ -254,14 +289,11 @@ def translate(tree):
                 assert isinstance(tree.child(0), LeftValue) or \
                        (isinstance(tree.child(0), NonTerminal) and tree.child(0).type == 'Len') or \
                        isinstance(tree.child(0), Number), 'Syntax error'
-                if isinstance(tree.child(0), LeftValue):
-                    # { leftval.value = get_value(var_table, leftval.id); factor.value = leftval.value; }
+                if isinstance(tree.child(0), LeftValue):  # leftval
                     value = get_value(var_table, tree.child(0).id)  # search for var_table
                     assert value is not None, f'符号 "{tree.child(0).id}" 未定义'
-                    tree.child(0).value = value
                     tree.value = value
-                if isinstance(tree.child(0), NonTerminal):
-                    # { factor.value = len.value; }
+                elif isinstance(tree.child(0), NonTerminal):
                     tree.value = tree.child(0).value
                 else:
                     tree.value = tree.child(0).value
@@ -300,13 +332,14 @@ def translate(tree):
                 print()
         # Len
         elif tree.type == 'Len':
-            """len -> LEN '(' expr ')'  { len.value = len(expr.value) }"""
+            """len -> LEN '(' leftval ')'  { len.value = len(leftval.value) }"""
             assert len(tree.children) == 4 and \
                    isinstance(tree.child(0), Terminal) and tree.child(0).text == 'len' and \
                    isinstance(tree.child(1), Terminal) and tree.child(1).text == '(' and \
-                   isinstance(tree.child(2), NonTerminal) and tree.child(2).type == 'Expr' and \
+                   isinstance(tree.child(2), LeftValue) and \
                    isinstance(tree.child(3), Terminal) and tree.child(3).text == ')', 'Syntax error'
-            tree.value = len(tree.child(2).value)
+            value = get_value(var_table, tree.child(2).id)
+            tree.value = len(value)
         # Array
         elif tree.type == 'Array':
             ''' array : '[' exprs ']' | '[' ']' '''
@@ -328,11 +361,14 @@ def translate(tree):
             assert len(tree.children) == 2 and \
                    isinstance(tree.child(0), LeftValue) and \
                    isinstance(tree.child(1), Terminal) and tree.child(1).text in ('++', '--'), 'Syntax error'
+            value = get_value(var_table, tree.child(0).id)
             if tree.child(1).text == '++':
-                tree.child(0).value = tree.child(0).value + 1
+                value = value + 1
+                if __DEBUG_MODE: print('SelfVar', tree.child(0).id, '++', value)
             elif tree.child(1).text == '--':
-                tree.child(0).value = tree.child(0).value - 1
-            set_value(var_table, tree.child(0).id, tree.child(0).value)
+                value = value - 1
+                if __DEBUG_MODE: print('SelfVar', tree.child(0).id, '--', value)
+            set_value(var_table, tree.child(0).id, value)
         # Condition
         elif tree.type == 'Condition':
             assert len(tree.children) == 3 or len(tree.children) == 1, 'Syntax error'
@@ -356,3 +392,4 @@ def translate(tree):
             elif len(tree.children) == 1:
                 assert isinstance(tree.child(0), NonTerminal) and tree.child(0).type == 'Expr', 'Syntax error'
                 tree.value = bool(tree.child(0).value)
+            if __DEBUG_MODE: print('condition:', tree.value)

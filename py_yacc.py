@@ -4,15 +4,14 @@ program : statements
 statements : statements statement | statement
 statement : assignment | expr | print | if | while | for | break
 assignment : leftval ASSIGN expr | leftval ASSIGN array
-leftval : leftval LLIST expr RLIST | ID  # 左值，可以被赋值、读取值的符号
-# 右值，只能读取值的符号
+leftval : leftval LBRACKET expr RBRACKET | ID  # 左值，可以被赋值、读取值的符号
 expr : expr PLUS term | expr MINUS term | term
 term : term TIMES factor | term DIVIDE factor | term EDIVIDE factor | factor
 factor : leftval | NUMBER | len | LPAREN expr RPAREN
 exprs : exprs COMMA expr | expr
-len : LEN LPAREN expr RPAREN
+len : LEN LPAREN leftval RPAREN
 print : PRINT LPAREN exprs RPAREN | PRINT LPAREN RPAREN
-array : LLIST exprs RLIST | LLIST RLIST
+array : LBRACKET exprs RBRACKET | LBRACKET RBRACKET
 selfvar : leftval DPLUS | leftval DMINUS
 condition : expr LT expr | expr LE expr | expr GT expr | expr GE expr | expr EQ expr | expr NE expr | expr
 if : IF LPAREN condition RPAREN LBRACE statements RBRACE
@@ -25,9 +24,10 @@ break : BREAK
 
 # coding=utf-8
 from ply import yacc
+
+from node import *
 # noinspection PyUnresolvedReferences
 from py_lex import *
-from node import *
 
 
 # YACC for parsing Python
@@ -76,7 +76,7 @@ def p_assignment(t):
 
 
 def p_leftval(t):
-    """leftval : leftval LLIST expr RLIST
+    """leftval : leftval LBRACKET expr RBRACKET
                | ID"""
     if len(t) == 2:
         t[0] = LeftValue('LeftVal')
@@ -150,7 +150,7 @@ def p_exprs(t):
 
 
 def p_len(t):
-    """len : LEN LPAREN expr RPAREN"""
+    """len : LEN LPAREN leftval RPAREN"""
     if len(t) == 5:
         t[0] = NonTerminal('Len')
         t[0].add(Terminal(t[1]))
@@ -176,8 +176,8 @@ def p_print(t):
 
 
 def p_array(t):
-    """array : LLIST exprs RLIST
-             | LLIST RLIST"""
+    """array : LBRACKET exprs RBRACKET
+             | LBRACKET RBRACKET"""
     if len(t) == 4:
         t[0] = NonTerminal('Array')
         t[0].add(Terminal(t[1]))
@@ -220,7 +220,7 @@ def p_if(t):
     """if : IF LPAREN condition RPAREN LBRACE statements RBRACE
           | IF LPAREN condition RPAREN LBRACE statements RBRACE ELSE LBRACE statements RBRACE
           | IF LPAREN condition RPAREN LBRACE statements RBRACE ELIF LPAREN condition RPAREN LBRACE statements RBRACE ELSE LBRACE statements RBRACE"""
-    if len(t) == 8:
+    if len(t) in (8, 12, 19):
         t[0] = NonTerminal('If')
         t[0].add(Terminal(t[1]))  # if
         t[0].add(Terminal(t[2]))  # (
@@ -229,28 +229,12 @@ def p_if(t):
         t[0].add(Terminal(t[5]))  # {
         t[0].add(t[6])  # statements
         t[0].add(Terminal(t[7]))  # }
-    elif len(t) == 12:
-        t[0] = NonTerminal('If')
-        t[0].add(Terminal(t[1]))  # if
-        t[0].add(Terminal(t[2]))  # (
-        t[0].add(t[3])  # condition
-        t[0].add(Terminal(t[4]))  # )
-        t[0].add(Terminal(t[5]))  # {
-        t[0].add(t[6])  # statements
-        t[0].add(Terminal(t[7]))  # }
+    if len(t) == 12:
         t[0].add(Terminal(t[8]))  # else
         t[0].add(Terminal(t[9]))  # {
         t[0].add(t[10])  # statements
         t[0].add(Terminal(t[11]))  # }
     elif len(t) == 19:
-        t[0] = NonTerminal('If')
-        t[0].add(Terminal(t[1]))  # if
-        t[0].add(Terminal(t[2]))  # (
-        t[0].add(t[3])  # condition
-        t[0].add(Terminal(t[4]))  # )
-        t[0].add(Terminal(t[5]))  # {
-        t[0].add(t[6])  # statements
-        t[0].add(Terminal(t[7]))  # }
         t[0].add(Terminal(t[8]))  # elif
         t[0].add(Terminal(t[9]))  # (
         t[0].add(t[10])  # condition
@@ -262,6 +246,7 @@ def p_if(t):
         t[0].add(Terminal(t[16]))  # {
         t[0].add(t[17])  # statements
         t[0].add(Terminal(t[18]))  # }
+
 
 def p_while(t):
     """while : WHILE LPAREN condition RPAREN LBRACE statements RBRACE"""

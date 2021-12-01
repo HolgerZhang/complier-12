@@ -15,7 +15,7 @@ reserved_words = {
     'len': 'LEN',
     'break': 'BREAK'
 }
-tokens = ['NUMBER', 'PLUS', 'MINUS', 'TIMES', 'DIVIDE', 'LPAREN', 'RPAREN', 'LLIST', 'RLIST', 'ASSIGN',
+tokens = ['NUMBER', 'PLUS', 'MINUS', 'TIMES', 'DIVIDE', 'LPAREN', 'RPAREN', 'LBRACKET', 'RBRACKET', 'ASSIGN',
           'LBRACE', 'RBRACE', 'SEMICOLON', 'COMMA', 'DPLUS', 'DMINUS', 'ID', 'EDIVIDE',
           'LT', 'LE', 'GT', 'GE', 'EQ', 'NE', ] + list(reserved_words.values())
 
@@ -24,16 +24,16 @@ t_PLUS = r'\+'
 t_MINUS = r'-'
 t_TIMES = r'\*'
 t_DIVIDE = r'/'
-t_EDIVIDE = r'//'
+t_EDIVIDE = r'//'  # 整除
 t_LPAREN = r'\('
 t_RPAREN = r'\)'
 t_LBRACE = r'\{'
 t_RBRACE = r'\}'
-t_LLIST = R'\['
-t_RLIST = R'\]'
+t_LBRACKET = r'\['
+t_RBRACKET = r'\]'
 t_ASSIGN = r'='
-t_DPLUS = r'\+\+'
-t_DMINUS = r'--'
+t_DPLUS = r'\+\+'  # 自增
+t_DMINUS = r'--'  # 自减
 t_COMMA = r','
 t_SEMICOLON = r';'
 t_LT = r'<'
@@ -58,7 +58,7 @@ def t_newline(t):
 
 
 def t_NUMBER(t):
-    r"""-?[0-9]+"""
+    r"""[0-9]+"""
     t.value = int(t.value)
     return t
 

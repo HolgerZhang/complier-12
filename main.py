@@ -14,16 +14,15 @@ try:
         text = file.read()
     # syntax parse
     root = yacc.parse(text)
-    print("分析前的语法树：", root)
+    print("语法树：", root)
     if root is None:
         exit(0)
     # translation
     print('运行结果：')
     translation.translate(root)
-    print("分析后的语法树：", root)
     print("当前变量表：", translation.var_table)
 except Exception as e:
     sys.stdout.flush()
     sleep(0.05)
     print(*e.args, file=sys.stderr)
-    raise e
+    # raise e

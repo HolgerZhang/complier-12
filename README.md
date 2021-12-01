@@ -3,7 +3,8 @@
 
 ### 概述
 
-使用 Python3 以及 PLY 库实现了简易的 Python 解析器。主要涉及的知识有语法分析，语法制导翻译。完成了以下内容的解析：赋值语句、完整的四则运算、print语句。
+使用 Python3 以及 PLY 库实现了简易的 Python 解析器。主要涉及的知识有语法分析，语法制导翻译。
+除了赋值语句、完整的四则运算、print语句外，完成了以下内容的解析：选择语句、循环语句、列表、len函数、下标访问。
 
 ### 编程说明
 
@@ -17,25 +18,37 @@
 设计了如下文法来实现词法分析：
 
 ```
-PRINT -> 'print'
+运算符定义略
+保留字：print len if elif while for break
 ID -> [A-Za-z_][A-Za-z0-9_]*
-NUMBER -> -?\d+
+NUMBER -> \d+
 ```
 
-> 识别 ID，首先检查是否为保留字print，若是则申明其类型，否则为 ID
+> 识别 ID，首先检查是否为保留字，若是则申明其类型，否则为 ID
 
 设计了如下语法来实现语法分析
 
 ```
-program -> statements
-statements -> statements statement | statement
-statement -> assignment | expr | print
-assignment -> ID '=' expr
-expr -> expr '+' term | expr '-' term | term
-term -> term '*' factor | term '/' factor | factor
-factor -> ID | NUMBER | '(' expr ')'
-exprs -> exprs ',' expr | expr
-print : PRINT '(' exprs ')' | PRINT '(' ')'
+program : statements
+statements : statements statement | statement
+statement : assignment | expr | print | if | while | for | break
+assignment : leftval ASSIGN expr | leftval ASSIGN array
+leftval : leftval LBRACKET expr RBRACKET | ID  # 左值，可以被赋值、读取值的符号
+expr : expr PLUS term | expr MINUS term | term
+term : term TIMES factor | term DIVIDE factor | term EDIVIDE factor | factor
+factor : leftval | NUMBER | len | LPAREN expr RPAREN
+exprs : exprs COMMA expr | expr
+len : LEN LPAREN leftval RPAREN
+print : PRINT LPAREN exprs RPAREN | PRINT LPAREN RPAREN
+array : LBRACKET exprs RBRACKET | LBRACKET RBRACKET
+selfvar : leftval DPLUS | leftval DMINUS
+condition : expr LT expr | expr LE expr | expr GT expr | expr GE expr | expr EQ expr | expr NE expr | expr
+if : IF LPAREN condition RPAREN LBRACE statements RBRACE
+   | IF LPAREN condition RPAREN LBRACE statements RBRACE ELSE LBRACE statements RBRACE
+   | IF LPAREN condition RPAREN LBRACE statements RBRACE ELIF LPAREN condition RPAREN LBRACE statements RBRACE ELSE LBRACE statements RBRACE
+while : WHILE LPAREN condition RPAREN LBRACE statements RBRACE
+for : FOR LPAREN assignment SEMICOLON condition SEMICOLON selfvar RPAREN LBRACE statements RBRACE
+break : BREAK
 ```
 
 其中，expr、term、factor 定义了四则运算的语法；exprs、print 实现了支持不定长参数的 print 函数。另外定义了一系列节点，与语法分析过程中相对应：
@@ -109,20 +122,43 @@ class Terminal(_node):
 如上一小节的代码所示，每个节点都有一个 value 属性，用来保存节点的值（如没有值则为None）。另外设计了一个变量表，用以保存每个变量的值。具体地，当使用赋值语句为一个变量赋值时，会在变量表中添加名为该变量名的记录；当访问一个变量的值时，会到变量表中查找该变量的值，如不存在则报错。定义了如下的动作（其中 `<...>` 为列表）：
 
 ```
-assignment -> ID '=' expr  { ID.value = expr.value; var_table[ID.id] = expr.value; }
+assignment -> leftval ASSIGN expr | leftval ASSIGN array { value = expr.value; set_value(var_table, leftval.id, value); }
+leftval -> leftval1 LLIST expr RLIST  { leftval.id = (leftval1.id, expr.value);
+                                        leftval.value = get_value(var_table, leftval.id); }
+leftval -> ID  { leftval.id = (ID.id, None);
+                 if (ID.value != NIL) { set_value(var_table, leftval.id, ID.value); } }
+leftval -> leftval1 LLIST expr RLIST  { leftval.id = (leftval1.id, expr.value); }
 expr -> expr1 '+' term  { expr.value = expr1.value + term.value; }
 expr -> expr1 '-' term  { expr.value = expr1.value - term.value; }
 expr -> term  { expr.value = term.value; }
 term -> term1 '*' factor  { term.value = term1.value * factor.value; }
 term -> term1 '/' factor  { term.value = term1.value / factor.value; }
+term -> term1 '//' factor  { term.value = term1.value // factor.value; }
 term -> factor { term.value = factor.value; }
-factor -> ID { ID.value = var_table[ID.id]; factor.value = ID.value; }
+factor -> leftval  { value = get_value(var_table, leftval.id); factor.value = value; }
 factor -> NUMBER  { factor.value = NUMBER.value; }
+factor -> len  { factor.value = len.value; }
 factor -> '(' expr ')'  { fact.value = expr.value; }
-exprs -> exprs1 ',' expr  { exprs.value = exprs1.value + <expr.value>; }
-exprs -> expr  { exprs.value = <expr.value>; }
+exprs -> exprs1 ',' expr  { exprs.value = exprs1.value + [expr.value]; }
+exprs -> expr  { exprs.value = [expr.value]; }
 print -> PRINT '(' exprs ')'  { print(*exprs.value); }
 print -> PRINT '(' ')'  { print(); }
+len -> LEN '(' leftval ')'  { len.value = len(get_value(var_table, leftval.id)) }
+array -> '[' exprs ']'  { array.value = exprs.value; }
+array -> '[' ']' { array.value = []; }
+selfvar -> leftval '++'  { value = get_value(var_table, tree.child(0).id);
+                           value = value + 1;
+                           set_value(var_table, leftval.id, value); }
+selfvar -> leftval '--'  { value = get_value(var_table, tree.child(0).id);
+                           value = value - 1;
+                           set_value(var_table, leftval.id, value); }
+condition -> expr '<' expr1  { condition.value = exp.value < expr1.value; }
+condition -> expr '<=' expr1  { condition.value = exp.value <= expr1.value; }
+condition -> expr '>' expr1  { condition.value = exp.value > expr1.value; }
+condition -> expr '>=' expr1  { condition.value = exp.value >= expr1.value; }
+condition -> expr '==' expr1  { condition.value = exp.value == expr1.value; }
+condition -> expr '!=' expr1  { condition.value = exp.value != expr1.value; }
+condition -> expr  { condition.value = bool(exp.value); }
 ```
 
 采用深度优先的顺序遍历整个语法树，具体实现详见代码。
@@ -134,7 +170,8 @@ print -> PRINT '(' ')'  { print(); }
 ```
 .
 ├── README.pdf    # 本文档
-├── example.py    # 输入文件
+├── binary_search.py    # 输入文件1
+├── select_sort.py      # 输入文件2
 ├── main.py       # 主程序
 ├── node.py       # 节点定义文件
 ├── parser.out    # PLY生成的文件
@@ -147,100 +184,87 @@ print -> PRINT '(' ')'  { print(); }
 主程序接受一个参数，为输入文件的路径。运行方法如下：
 
 ~~~bash
-$ python3 main.py example.py
+$ python3 main.py <py-file>
 ~~~
 
-输入文件如下：
+输入文件： binary_search.py
 
-~~~python
-a=1
-b=2
-c=a+b
-d=c-1+a
-print(c)
-print(a,b,c)
+~~~
+a=[1,2,3,4,5,6,7,8,9,10]
+
+key=3
+
+n=len(a)
+
+begin=0
+end=n-1
+
+while(begin<=end){
+    mid=(begin+end)//2
+    if(a[mid]>key){
+        end=mid-1
+    }
+    elif(a[mid]<key){
+        begin=mid+1
+    }
+    else{
+        break
+    }
+}
+print(mid)
 ~~~
 
 输出如下：
 
 ~~~
-分析前的语法树： [Program [Statements [Statements [Statements [Statements [Statements [Statements [Statement [Assignment [a(value=0.0)] [=] [Expr [Term [Factor [1.0]]]]]]] [Statement [Assignment [b(value=0.0)] [=] [Expr [Term [Factor [2.0]]]]]]] [Statement [Assignment [c(value=0.0)] [=] [Expr [Expr [Term [Factor [a(value=0.0)]]]] [+] [Term [Factor [b(value=0.0)]]]]]]] [Statement [Assignment [d(value=0.0)] [=] [Expr [Expr [Expr [Term [Factor [c(value=0.0)]]]] [-] [Term [Factor [1.0]]]] [+] [Term [Factor [a(value=0.0)]]]]]]] [Statement [Print [print] [(] [Exprs [Expr [Term [Factor [c(value=0.0)]]]]] [)]]]] [Statement [Print [print] [(] [Exprs [Exprs [Exprs [Expr [Term [Factor [a(value=0.0)]]]]] [,] [Expr [Term [Factor [b(value=0.0)]]]]] [,] [Expr [Term [Factor [c(value=0.0)]]]]] [)]]]]]
+语法树： [Program [Statements [Statements [Statements [Statements [Statements [Statements [Statements [Statement [Assignment [LeftVal ID('a')] [Array [Exprs [Exprs [Exprs [Exprs [Exprs [Exprs [Exprs [Exprs [Exprs [Exprs [Expr [Term [Factor Number(1)]]]] [Expr [Term [Factor Number(2)]]]] [Expr [Term [Factor Number(3)]]]] [Expr [Term [Factor Number(4)]]]] [Expr [Term [Factor Number(5)]]]] [Expr [Term [Factor Number(6)]]]] [Expr [Term [Factor Number(7)]]]] [Expr [Term [Factor Number(8)]]]] [Expr [Term [Factor Number(9)]]]] [Expr [Term [Factor Number(10)]]]] ]]]] [Statement [Assignment [LeftVal ID('key')] [Expr [Term [Factor Number(3)]]]]]] [Statement [Assignment [LeftVal ID('n')] [Expr [Term [Factor [Len [len] [LeftVal ID('a')] ]]]]]]] [Statement [Assignment [LeftVal ID('begin')] [Expr [Term [Factor Number(0)]]]]]] [Statement [Assignment [LeftVal ID('end')] [Expr [Expr [Term [Factor [LeftVal ID('n')]]]] [-] [Term [Factor Number(1)]]]]]] [Statement [While [Condition [Expr [Term [Factor [LeftVal ID('begin')]]]] [≤] [Expr [Term [Factor [LeftVal ID('end')]]]]] [Statements [Statements [Statement [Assignment [LeftVal ID('mid')] [Expr [Term [Term [Factor [Expr [Expr [Term [Factor [LeftVal ID('begin')]]]] [+] [Term [Factor [LeftVal ID('end')]]]] ]] [//] [Factor Number(2)]]]]]] [Statement [If [if] [Condition [Expr [Term [Factor [LeftVal [LeftVal ID('a')] [Expr [Term [Factor [LeftVal ID('mid')]]]] ]]]] [＞] [Expr [Term [Factor [LeftVal ID('key')]]]]] [Statements [Statement [Assignment [LeftVal ID('end')] [Expr [Expr [Term [Factor [LeftVal ID('mid')]]]] [-] [Term [Factor Number(1)]]]]]] [elif] [Condition [Expr [Term [Factor [LeftVal [LeftVal ID('a')] [Expr [Term [Factor [LeftVal ID('mid')]]]] ]]]] [＜] [Expr [Term [Factor [LeftVal ID('key')]]]]] [Statements [Statement [Assignment [LeftVal ID('begin')] [Expr [Expr [Term [Factor [LeftVal ID('mid')]]]] [+] [Term [Factor Number(1)]]]]]] [else] [Statements [Statement [Break [break]]]] ]]] ]]] [Statement [Print [print] [Exprs [Expr [Term [Factor [LeftVal ID('mid')]]]]] ]]]]
 运行结果：
-3.0
-1.0 2.0 3.0
-分析后的语法树： [Program [Statements [Statements [Statements [Statements [Statements [Statements [Statement [Assignment [a(value=1.0)] [=] [Expr(value=1.0) [Term(value=1.0) [Factor(value=1.0) [1.0]]]]]]] [Statement [Assignment [b(value=2.0)] [=] [Expr(value=2.0) [Term(value=2.0) [Factor(value=2.0) [2.0]]]]]]] [Statement [Assignment [c(value=3.0)] [=] [Expr(value=3.0) [Expr(value=1.0) [Term(value=1.0) [Factor(value=1.0) [a(value=1.0)]]]] [+] [Term(value=2.0) [Factor(value=2.0) [b(value=2.0)]]]]]]] [Statement [Assignment [d(value=3.0)] [=] [Expr(value=3.0) [Expr(value=2.0) [Expr(value=3.0) [Term(value=3.0) [Factor(value=3.0) [c(value=3.0)]]]] [-] [Term(value=1.0) [Factor(value=1.0) [1.0]]]] [+] [Term(value=1.0) [Factor(value=1.0) [a(value=1.0)]]]]]]] [Statement [Print [print] [(] [Exprs(value=<3.0>) [Expr(value=3.0) [Term(value=3.0) [Factor(value=3.0) [c(value=3.0)]]]]] [)]]]] [Statement [Print [print] [(] [Exprs(value=<1.0,2.0,3.0>) [Exprs(value=<1.0,2.0>) [Exprs(value=<1.0>) [Expr(value=1.0) [Term(value=1.0) [Factor(value=1.0) [a(value=1.0)]]]]] [,] [Expr(value=2.0) [Term(value=2.0) [Factor(value=2.0) [b(value=2.0)]]]]] [,] [Expr(value=3.0) [Term(value=3.0) [Factor(value=3.0) [c(value=3.0)]]]]] [)]]]]]
-当前变量表： {'a': 1.0, 'b': 2.0, 'c': 3.0, 'd': 3.0}
+2
+当前变量表： {'a': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 'key': 3, 'n': 10, 'begin': 2, 'end': 3, 'mid': 2}
 ~~~
 
 > 如果图片不清晰，请点击如下链接：[http://repo.holgerbest.top/html/ply_python.html](http://repo.holgerbest.top/html/ply_python.html)
 
-分析前的语法树：
+语法树：
 
-![image-20211115180855219](README.assets/image-20211115180855219.png)
+![image-20211115180855219](binary_search.png)
 
-分析后的语法树：
+输入文件： select_sort.py
 
-![image-20211115180942880](README.assets/image-20211115180942880.png)
+```
+a=[1,2,4,3,6,5]
 
-下面给出一些特殊的输入：
+n=len(a)
 
-输入文件：
-
-```python
-a = 1
-print()
+for(i=0;i<n;i++){
+    max_v=a[i]
+    i_v=i
+    
+    for(j=i;j<n;j++){
+        if(a[j]>max_v){
+            max_v=a[j]
+            i_v=j
+        }
+    }
+    
+    t=a[i]
+    a[i]=a[i_v]
+    a[i_v]=t
+}
+    
 print(a)
 ```
 
 输出：
 
 ```
-分析前的语法树： [Program [Statements [Statements [Statements [Statement [Assignment [a(value=0.0)] [=] [Expr [Term [Factor [1.0]]]]]]] [Statement [Print [print] [(] [)]]]] [Statement [Print [print] [(] [Exprs [Expr [Term [Factor [a(value=0.0)]]]]] [)]]]]]
+语法树： [Program [Statements [Statements [Statements [Statements [Statement [Assignment [LeftVal ID('a')] [Array [Exprs [Exprs [Exprs [Exprs [Exprs [Exprs [Expr [Term [Factor Number(1)]]]] [Expr [Term [Factor Number(2)]]]] [Expr [Term [Factor Number(4)]]]] [Expr [Term [Factor Number(3)]]]] [Expr [Term [Factor Number(6)]]]] [Expr [Term [Factor Number(5)]]]] ]]]] [Statement [Assignment [LeftVal ID('n')] [Expr [Term [Factor [Len [len] [LeftVal ID('a')] ]]]]]]] [Statement [For [Assignment [LeftVal ID('i')] [Expr [Term [Factor Number(0)]]]] [Condition [Expr [Term [Factor [LeftVal ID('i')]]]] [＜] [Expr [Term [Factor [LeftVal ID('n')]]]]] [SelfVar [LeftVal ID('i')] [++]] [Statements [Statements [Statements [Statements [Statements [Statements [Statement [Assignment [LeftVal ID('max_v')] [Expr [Term [Factor [LeftVal [LeftVal ID('a')] [Expr [Term [Factor [LeftVal ID('i')]]]] ]]]]]]] [Statement [Assignment [LeftVal ID('i_v')] [Expr [Term [Factor [LeftVal ID('i')]]]]]]] [Statement [For [Assignment [LeftVal ID('j')] [Expr [Term [Factor [LeftVal ID('i')]]]]] [Condition [Expr [Term [Factor [LeftVal ID('j')]]]] [＜] [Expr [Term [Factor [LeftVal ID('n')]]]]] [SelfVar [LeftVal ID('j')] [++]] [Statements [Statement [If [if] [Condition [Expr [Term [Factor [LeftVal [LeftVal ID('a')] [Expr [Term [Factor [LeftVal ID('j')]]]] ]]]] [＞] [Expr [Term [Factor [LeftVal ID('max_v')]]]]] [Statements [Statements [Statement [Assignment [LeftVal ID('max_v')] [Expr [Term [Factor [LeftVal [LeftVal ID('a')] [Expr [Term [Factor [LeftVal ID('j')]]]] ]]]]]]] [Statement [Assignment [LeftVal ID('i_v')] [Expr [Term [Factor [LeftVal ID('j')]]]]]]] ]]] ]]] [Statement [Assignment [LeftVal ID('t')] [Expr [Term [Factor [LeftVal [LeftVal ID('a')] [Expr [Term [Factor [LeftVal ID('i')]]]] ]]]]]]] [Statement [Assignment [LeftVal [LeftVal ID('a')] [Expr [Term [Factor [LeftVal ID('i')]]]] ] [Expr [Term [Factor [LeftVal [LeftVal ID('a')] [Expr [Term [Factor [LeftVal ID('i_v')]]]] ]]]]]]] [Statement [Assignment [LeftVal [LeftVal ID('a')] [Expr [Term [Factor [LeftVal ID('i_v')]]]] ] [Expr [Term [Factor [LeftVal ID('t')]]]]]]] ]]] [Statement [Print [print] [Exprs [Expr [Term [Factor [LeftVal ID('a')]]]]] ]]]]
 运行结果：
-
-1.0
-分析后的语法树： [Program [Statements [Statements [Statements [Statement [Assignment [a(value=1.0)] [=] [Expr(value=1.0) [Term(value=1.0) [Factor(value=1.0) [1.0]]]]]]] [Statement [Print [print] [(] [)]]]] [Statement [Print [print] [(] [Exprs(value=<1.0>) [Expr(value=1.0) [Term(value=1.0) [Factor(value=1.0) [a(value=1.0)]]]]] [)]]]]]
-当前变量表： {'a': 1.0}
+[6, 5, 4, 3, 2, 1]
+当前变量表： {'a': [6, 5, 4, 3, 2, 1], 'n': 6, 'i': 6, 'max_v': 1, 'i_v': 5, 'j': 6, 't': 1}
 ```
 
-分析前的语法树：
+语法树：
 
-![img](README.assets/D73846FA-AE1B-440F-BADC-1A7741C46CAF.png)
-
-分析后的语法树：
-
-![img](README.assets/B1458945-88CE-445D-8007-DE325C6DBCDC.png)
-
-
-
-输入文件：
-
-```python
-abc123 = 1/0
-```
-
-输出：
-
-```
-分析前的语法树： [Program [Statements [Statement [Assignment [abc123(value=0.0)] [=] [Expr [Term [Term [Factor [1.0]]] [/] [Factor [0.0]]]]]]]]
-运行结果：
-除数不能为0
-```
-
-分析前的语法树：
-
-![img](README.assets/DF691BCF-1C44-43FC-A38D-8B7FF08BEADA.png)
-
-输入文件：
-
-```python
-abc123 = 123
-++abc123
-```
-
-输出：
-
-```
-Syntax error '+' at line 2
-```
+![img](select_sort.png)
 

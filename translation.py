@@ -57,7 +57,7 @@ def get_value(tb, vid):
     if not isinstance(name, tuple):
         if sub is None:
             return tb[name]
-        return tb.get[name][sub]
+        return tb[name][sub]
     if sub is None:
         return get_value(tb, name)
     return get_value(tb, name)[sub]
